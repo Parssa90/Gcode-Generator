@@ -4,7 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="4ede8c1a-1207-457e-a5e0-1a4761889dff" name="Changes" comment="G-Code Generator for Okuma VMC-46 using OP300 for face milling applications. Added funtionality and UI." />
+    <list default="true" id="4ede8c1a-1207-457e-a5e0-1a4761889dff" name="Changes" comment="G-Code Generator for Okuma VMC-46 using OP300 for face milling applications. Added funtionality and UI.">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/data/tools.json" beforeDir="false" afterPath="$PROJECT_DIR$/data/tools.json" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -98,7 +101,23 @@
       <option name="project" value="LOCAL" />
       <updated>1736588505984</updated>
     </task>
-    <option name="localTasksCounter" value="5" />
+    <task id="LOCAL-00005" summary="G-Code Generator for Okuma VMC-46 using OP300 for face milling applications. Added funtionality and UI.">
+      <option name="closed" value="true" />
+      <created>1736588817061</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1736588817061</updated>
+    </task>
+    <task id="LOCAL-00006" summary="G-Code Generator for Okuma VMC-46 using OP300 for face milling applications. Added funtionality and UI.">
+      <option name="closed" value="true" />
+      <created>1736588836360</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1736588836360</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="VcsManagerConfiguration">
