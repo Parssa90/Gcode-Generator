@@ -9,12 +9,13 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QColor
 
 class AddItemPopup(QDialog):
-    def __init__(self, fields, parent=None):
+    def __init__(self, fields, parent=None, dropdown_data=None):
         super().__init__(parent)
         self.setWindowTitle("Add Item")
         self.fields = fields
         self.inputs = {}
         self.resize(400, 400)
+        self.dropdown_data = dropdown_data or {}
 
         scroll_area = QScrollArea()
         scroll_widget = QWidget()
@@ -32,6 +33,9 @@ class AddItemPopup(QDialog):
             if field == "Riser":
                 input_field = QComboBox()
                 input_field.addItems(["Yes", "No"])
+            elif field == "Tools" and "Tools" in self.dropdown_data:
+                input_field = QComboBox()
+                input_field.addItems(self.dropdown_data["Tools"])
             else:
                 input_field = QLineEdit()
                 if field == "Diameter" or field == "Number of Inserts":
@@ -59,8 +63,11 @@ class AddItemPopup(QDialog):
     def validate_and_accept(self):
         for field, input_field in self.inputs.items():
             if isinstance(input_field, QLineEdit) and field != "Spindle Speed" and field != "Feed Rate":
-                if not input_field.text().isdigit():
+                if field == "Name" and not input_field.text().isdigit():
                     QMessageBox.critical(self, "Invalid Input", f"{field} must be a number.")
+                    return
+                elif field != "Name" and not input_field.text():
+                    QMessageBox.critical(self, "Invalid Input", f"{field} cannot be empty.")
                     return
         self.accept()
 
@@ -152,11 +159,19 @@ class MainWindow(QMainWindow):
         return tab
 
     def open_add_item_popup(self, headers, table, filename):
-        if "Tools" in filename and self.tool_count == 0:
-            QMessageBox.critical(self, "Error", "You must add at least one tool before adding a part.")
-            return
+        dropdown_data = {}
+        if "Parts" in filename:
+            tools_filepath = os.path.join(self.data_folder, "tools.json")
+            if os.path.exists(tools_filepath):
+                with open(tools_filepath, "r") as file:
+                    tools_data = json.load(file)
+                    dropdown_data["Tools"] = [row[0] for row in tools_data]  # Assuming Tool Name is the first column
 
-        popup = AddItemPopup(headers, self)
+            if not dropdown_data.get("Tools"):
+                QMessageBox.critical(self, "Error", "You must add at least one tool before adding a part.")
+                return
+
+        popup = AddItemPopup(headers, self, dropdown_data)
         if popup.exec_() == QDialog.Accepted:
             data = popup.get_data()
             row_position = table.rowCount()
