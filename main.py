@@ -1,141 +1,158 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
-import math
-
-# Global list for risers
-risers = []
+import json
+from math import ceil
+from tkinter import Tk, Toplevel, Label, Button, Entry, StringVar, messagebox, ttk
 
 
-# Function to calculate step-downs
-def calculate_stepdowns(depth):
-    max_step = 0.8
-    min_step = 0.1
-    last_pass = 0.1
-
-    steps = []
-    remaining_depth = depth - last_pass
-
-    while remaining_depth > max_step:
-        steps.append(max_step)
-        remaining_depth -= max_step
-
-    if remaining_depth > min_step:
-        steps.append(remaining_depth)
-
-    steps.append(last_pass)
-    return steps
-
-
-# Function to generate G-code for riser cutting
-def generate_riser_gcode():
-    riser_gcode = []
-    for riser in risers:
-        name, diameter, height, x_center, y_center = riser
-        radius = diameter / 2
-        riser_gcode.append(f"(Riser: {name})")
-        riser_gcode.append(f"G00 Z{height + 10} ; Safe height above riser")
-        riser_gcode.append(f"G00 X{x_center:.2f} Y{y_center + radius + 10:.2f}")
-        riser_gcode.append(f"G01 Z0 F500 ; Cutting riser at full width")
-        riser_gcode.append(f"G01 Y{y_center - radius - 10:.2f}")
-        riser_gcode.append(f"G00 Z{height + 10} ; Retract to safe height")
-        riser_gcode.append("")
-    return riser_gcode
-
-
-# Function to generate G-code for part cutting
-def generate_gcode(part_number_entry=None, num_parts_var=None, x_entry=None, y_entry=None, z_entry=None,
-                   cutter_var=None, depth_entry=None, gcode_text=None):
+# Helper Functions for Data Management
+def load_data(file_path):
     try:
-        part_number = int(part_number_entry.get())
-        num_parts = int(num_parts_var.get())
-        x = float(x_entry.get())
-        y = float(y_entry.get())
-        z = float(z_entry.get())
-        cutter_diameter = 88 if "88mm" in cutter_var.get() else 148
-        depth = float(depth_entry.get())
-
-        if depth < 1 or depth > 10:
-            raise ValueError("Cutting depth must be between 1 and 10mm.")
-
-    except ValueError as e:
-        messagebox.showerror("Input Error", str(e))
-        return
-
-    stepdowns = calculate_stepdowns(depth)
-    gcode = [f"O{part_number}"]
-    gcode.append(f"(Generated G-code for {num_parts} part(s))")
-    gcode.append("G40 G80 G90 G94 G17 ; Initialization")
-    gcode.append("G21 ; Metric Units")
-    gcode.append("G00 Z9999. ; Safe retract")
-
-    if num_parts == 1:
-        center_offset = x / 2 + 0.3 * cutter_diameter
-        gcode.append(f"(Single part cutting)")
-        gcode.append(f"G00 X{center_offset:.2f} Y{y / 2 + 10:.2f}")
-    else:
-        closer_part = 160 + x + 0.3 * cutter_diameter
-        far_part = -160 + 0.3 * cutter_diameter
-        gcode.append(f"(Closer part at {closer_part:.2f}, Far part at {far_part:.2f})")
-
-    for step in stepdowns:
-        gcode.append(f"(Step-down to {step:.2f}mm)")
-        gcode.append(f"G01 Z-{step:.2f} F500 ; Cutting pass")
-        gcode.append(f"G00 Z9999. ; Retract")
-
-    # Add riser G-code
-    gcode.extend(generate_riser_gcode())
-
-    gcode.append("M05 ; Stop spindle")
-    gcode.append("M02 ; End of program")
-
-    # Show G-code
-    gcode_text.delete("1.0", tk.END)
-    gcode_text.insert(tk.END, "\n".join(gcode))
+        with open(file_path, 'r') as file:
+            return json.load(file)
+    except FileNotFoundError:
+        return []
 
 
-# GUI for Riser Page
-def add_riser():
-    def save_riser():
-        name = riser_name_entry.get()
-        diameter = float(riser_diameter_entry.get())
-        height = float(riser_height_entry.get())
-        x_center = float(riser_x_entry.get())
-        y_center = float(riser_y_entry.get())
-        risers.append((name, diameter, height, x_center, y_center))
-        update_riser_table()
-        add_riser_window.destroy()
-
-    add_riser_window = tk.Toplevel(root)
-    add_riser_window.title("Add Riser")
-    tk.Label(add_riser_window, text="Riser Name:").grid(row=0, column=0)
-    tk.Label(add_riser_window, text="Diameter:").grid(row=1, column=0)
-    tk.Label(add_riser_window, text="Height:").grid(row=2, column=0)
-    tk.Label(add_riser_window, text="X Center:").grid(row=3, column=0)
-    tk.Label(add_riser_window, text="Y Center:").grid(row=4, column=0)
-
-    riser_name_entry = tk.Entry(add_riser_window)
-    riser_name_entry.grid(row=0, column=1)
-    riser_diameter_entry = tk.Entry(add_riser_window)
-    riser_diameter_entry.grid(row=1, column=1)
-    riser_height_entry = tk.Entry(add_riser_window)
-    riser_height_entry.grid(row=2, column=1)
-    riser_x_entry = tk.Entry(add_riser_window)
-    riser_x_entry.grid(row=3, column=1)
-    riser_y_entry = tk.Entry(add_riser_window)
-    riser_y_entry.grid(row=4, column=1)
-
-    tk.Button(add_riser_window, text="Save", command=save_riser).grid(row=5, column=0, columnspan=2)
+def save_data(file_path, data):
+    with open(file_path, 'w') as file:
+        json.dump(data, file, indent=4)
 
 
-def update_riser_table(riser_tree=None):
-    riser_tree.delete(*riser_tree.get_children())
-    for i, riser in enumerate(risers, start=1):
-        riser_tree.insert("", "end", iid=i, values=riser)
+def calculate_spindle_speed(diameter):
+    cutting_speed = 100  # Default m/min
+    return ceil((cutting_speed * 1000) / (3.1416 * diameter))
 
 
-# Run the full GUI
-root = tk.Tk()
-root.title("CNC G-code Generator")
-# Add Riser Page and other pages to the GUI here.
+def calculate_feed_rate(diameter, chip_thickness=0.15, inserts=4):
+    spindle_speed = calculate_spindle_speed(diameter)
+    return ceil(spindle_speed * chip_thickness * inserts)
 
-root.mainloop()
+
+# Main Application Class
+class GCodeApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("GCode Generator")
+
+        # File Paths
+        self.tools_file = "tools.json"
+        self.risers_file = "risers.json"
+        self.parts_file = "parts.json"
+
+        # Load Data
+        self.tools = load_data(self.tools_file)
+        self.risers = load_data(self.risers_file)
+        self.parts = load_data(self.parts_file)
+
+        # UI Setup
+        self.setup_ui()
+
+    def setup_ui(self):
+        # Tabs
+        self.notebook = ttk.Notebook(self.root)
+        self.parts_tab = ttk.Frame(self.notebook)
+        self.tools_tab = ttk.Frame(self.notebook)
+        self.risers_tab = ttk.Frame(self.notebook)
+        self.output_tab = ttk.Frame(self.notebook)
+
+        self.notebook.add(self.parts_tab, text="Parts")
+        self.notebook.add(self.tools_tab, text="Tools")
+        self.notebook.add(self.risers_tab, text="Risers")
+        self.notebook.add(self.output_tab, text="Output")
+        self.notebook.pack(expand=1, fill="both")
+
+        # Parts Tab
+        self.setup_table(self.parts_tab, "Parts")
+        # Tools Tab
+        self.setup_table(self.tools_tab, "Tools")
+        # Risers Tab
+        self.setup_table(self.risers_tab, "Risers")
+        # Output Tab
+        self.setup_output_tab()
+
+    def setup_table(self, tab, label):
+        Label(tab, text=f"{label} Table", font=("Arial", 14)).pack(pady=10)
+
+        # Table
+        columns = ("Name", "Dimension", "Tools", "Worktime", "Riser")
+        self.table = ttk.Treeview(tab, columns=columns, show='headings')
+        for col in columns:
+            self.table.heading(col, text=col)
+            self.table.column(col, width=100)
+        self.table.pack(expand=1, fill="both", pady=10)
+
+        # Buttons
+        btn_frame = ttk.Frame(tab)
+        btn_frame.pack(pady=10)
+
+        self.add_btn = Button(btn_frame, text="Add", command=lambda: self.open_add_popup(label))
+        self.add_btn.grid(row=0, column=0, padx=10)
+
+        self.edit_btn = Button(btn_frame, text="Edit", state="disabled", command=self.edit_entry)
+        self.edit_btn.grid(row=0, column=1, padx=10)
+
+        self.remove_btn = Button(btn_frame, text="Remove", state="disabled", command=self.remove_entry)
+        self.remove_btn.grid(row=0, column=2, padx=10)
+
+    def setup_output_tab(self):
+        Label(self.output_tab, text="GCode Output", font=("Arial", 14)).pack(pady=10)
+
+        self.output_box = Text(self.output_tab, wrap="none", font=("Courier", 10))
+        self.output_box.pack(expand=1, fill="both", pady=10)
+
+        self.copy_btn = Button(self.output_tab, text="Copy to Clipboard", command=self.copy_output)
+        self.copy_btn.pack(pady=10)
+
+    def open_add_popup(self, label):
+        popup = Toplevel(self.root)
+        popup.title(f"Add New {label}")
+        Label(popup, text=f"Add New {label}", font=("Arial", 14)).pack(pady=10)
+
+        # Add fields based on label
+        if label == "Parts":
+            self.add_part_fields(popup)
+        elif label == "Tools":
+            self.add_tool_fields(popup)
+        elif label == "Risers":
+            self.add_riser_fields(popup)
+
+        Button(popup, text="Cancel", command=popup.destroy).pack(pady=10)
+
+    def add_part_fields(self, popup):
+        Label(popup, text="Part Name (4-6 digits):").pack()
+        self.part_name = Entry(popup)
+        self.part_name.pack()
+
+        Label(popup, text="Dimensions (X,Y,Z in mm):").pack()
+        self.part_dims = Entry(popup)
+        self.part_dims.pack()
+
+    def add_tool_fields(self, popup):
+        Label(popup, text="Tool Name:").pack()
+        self.tool_name = Entry(popup)
+        self.tool_name.pack()
+
+        Label(popup, text="Tool Diameter (mm):").pack()
+        self.tool_diameter = Entry(popup)
+        self.tool_diameter.pack()
+
+    def add_riser_fields(self, popup):
+        Label(popup, text="Riser Name:").pack()
+        self.riser_name = Entry(popup)
+        self.riser_name.pack()
+
+    def copy_output(self):
+        self.root.clipboard_clear()
+        self.root.clipboard_append(self.output_box.get("1.0", "end-1c"))
+        messagebox.showinfo("Copied", "Output copied to clipboard!")
+
+    def remove_entry(self):
+        selected_item = self.table.selection()
+        if selected_item:
+            self.table.delete(selected_item)
+
+
+# Main Program
+if __name__ == "__main__":
+    root = Tk()
+    app = GCodeApp(root)
+    root.mainloop()
