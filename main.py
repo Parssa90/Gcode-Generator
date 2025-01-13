@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import (
     QPushButton, QWidget, QLineEdit, QLabel, QHBoxLayout, QDialog, QTextEdit, QComboBox, QScrollArea, QMessageBox
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor
 
 class AddItemPopup(QDialog):
     def __init__(self, fields, parent=None, dropdown_data=None):
@@ -23,12 +22,7 @@ class AddItemPopup(QDialog):
 
         form_layout = QVBoxLayout()
         for field in fields:
-            if field == "Dimension":
-                label = QLabel(f"{field} (X,Y)")
-            elif field == "Center":
-                label = QLabel(f"{field} (X,Y)")
-            else:
-                label = QLabel(field)
+            label = QLabel(f"{field} (X,Y)" if field in ["Dimension", "Center"] else field)
 
             if field == "Riser":
                 input_field = QComboBox()
@@ -38,8 +32,9 @@ class AddItemPopup(QDialog):
                 input_field.addItems(self.dropdown_data["Tools"])
             else:
                 input_field = QLineEdit()
-                if field == "Diameter" or field == "Number of Inserts":
+                if field in ["Diameter", "Number of Inserts"]:
                     input_field.textChanged.connect(self.calculate_defaults)
+
             form_layout.addWidget(label)
             form_layout.addWidget(input_field)
             self.inputs[field] = input_field
@@ -66,7 +61,7 @@ class AddItemPopup(QDialog):
                 if field == "Name" and not input_field.text().isdigit():
                     QMessageBox.critical(self, "Invalid Input", f"{field} must be a number.")
                     return
-                elif field != "Name" and not input_field.text():
+                elif not input_field.text():
                     QMessageBox.critical(self, "Invalid Input", f"{field} cannot be empty.")
                     return
         self.accept()
@@ -87,7 +82,6 @@ class AddItemPopup(QDialog):
             self.inputs["Spindle Speed"].setText(str(spindle_speed))
             self.inputs["Feed Rate"].setText(str(feed_rate))
         except (ValueError, KeyError):
-            # If diameter or inserts are not valid numbers, leave defaults blank
             self.inputs["Spindle Speed"].setText("")
             self.inputs["Feed Rate"].setText("")
 
@@ -97,9 +91,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("G-Code Generator")
         self.setGeometry(100, 100, 1000, 700)
 
-        self.icon_folder = "icons"
         self.data_folder = "data"
-        self.ensure_folders_exist()
+        os.makedirs(self.data_folder, exist_ok=True)
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
@@ -114,21 +107,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.risers_tab, "Risers")
         self.tabs.addTab(self.output_tab, "Output")
 
-        self.tool_count = 0
-
-    def ensure_folders_exist(self):
-        if not os.path.exists(self.icon_folder):
-            os.makedirs(self.icon_folder)
-            with open(os.path.join(self.icon_folder, "README.txt"), "w") as f:
-                f.write("Icon Naming Convention:\n")
-                f.write("- parts.png: Icon for Parts\n")
-                f.write("- tools.png: Icon for Tools\n")
-                f.write("- risers.png: Icon for Risers\n")
-                f.write("- output.png: Icon for Output\n")
-
-        if not os.path.exists(self.data_folder):
-            os.makedirs(self.data_folder)
-
     def create_table_tab(self, title, headers, filename):
         tab = QWidget()
         layout = QVBoxLayout()
@@ -136,9 +114,6 @@ class MainWindow(QMainWindow):
         table = QTableWidget()
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.verticalHeader().setVisible(False)
-        table.setStyleSheet("QTableWidget { font-size: 14px; } QHeaderView::section { background-color: lightgray; }")
 
         button_layout = QHBoxLayout()
         add_button = QPushButton("Add")
@@ -146,6 +121,7 @@ class MainWindow(QMainWindow):
         edit_button = QPushButton("Edit")
         remove_button = QPushButton("Remove")
         remove_button.clicked.connect(lambda: self.remove_selected_row(table, filename))
+
         button_layout.addWidget(add_button)
         button_layout.addWidget(edit_button)
         button_layout.addWidget(remove_button)
@@ -179,9 +155,6 @@ class MainWindow(QMainWindow):
             for col, header in enumerate(headers):
                 table.setItem(row_position, col, QTableWidgetItem(data[header]))
             self.save_table_data(table, filename)
-
-        if "Tools" in filename:
-            self.tool_count += 1
 
     def remove_selected_row(self, table, filename):
         current_row = table.currentRow()
@@ -218,7 +191,6 @@ class MainWindow(QMainWindow):
 
         self.output_box = QTextEdit()
         self.output_box.setReadOnly(True)
-        self.output_box.setStyleSheet("QTextEdit { background-color: #f0f0f0; font-size: 14px; }")
         layout.addWidget(self.output_box)
 
         generate_button = QPushButton("Generate G-Code")
@@ -229,7 +201,7 @@ class MainWindow(QMainWindow):
         return tab
 
     def generate_gcode(self):
-        # Placeholder G-Code generation logic
+        # Example G-Code logic
         commands = [
             "N001 G90 G21 (Set to Absolute Positioning in mm)",
             "N002 G17 (Select XY Plane)",
@@ -238,19 +210,7 @@ class MainWindow(QMainWindow):
             "N005 G01 X0 Y0 Z-5 F200 (Cut to Position)",
             "N006 M30 (End of Program)",
         ]
-
-        colored_gcode = ""
-        for command in commands:
-            if "G00" in command:
-                colored_gcode += f"<span style='color:red;'>{command}</span><br>"
-            elif "G01" in command:
-                colored_gcode += f"<span style='color:green;'>{command}</span><br>"
-            elif "M06" in command or "M30" in command:
-                colored_gcode += f"<span style='color:blue;'>{command}</span><br>"
-            else:
-                colored_gcode += f"{command}<br>"
-
-        self.output_box.setHtml(colored_gcode)
+        self.output_box.setText("\n".join(commands))
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
