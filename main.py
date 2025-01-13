@@ -1,219 +1,214 @@
-import sys
+import csv
 import os
-import json
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QTabWidget, QVBoxLayout, QTableWidget, QTableWidgetItem,
-    QPushButton, QWidget, QLineEdit, QLabel, QHBoxLayout, QDialog, QTextEdit, QComboBox, QScrollArea, QMessageBox
-)
-from PyQt5.QtCore import Qt
+import math
 
-class AddItemPopup(QDialog):
-    def __init__(self, fields, parent=None, dropdown_data=None):
-        super().__init__(parent)
-        self.setWindowTitle("Add Item")
-        self.fields = fields
-        self.inputs = {}
-        self.resize(400, 400)
-        self.dropdown_data = dropdown_data or {}
+# File paths for CSV storage
+TOOLS_FILE = "tools.csv"
+PARTS_FILE = "parts.csv"
+RISERS_FILE = "risers.csv"
 
-        scroll_area = QScrollArea()
-        scroll_widget = QWidget()
-        layout = QVBoxLayout()
+# Ensure files exist with headers
+def initialize_csv(file_path, headers):
+    if not os.path.exists(file_path):
+        with open(file_path, mode="w", newline="") as file:
+            writer = csv.DictWriter(file, fieldnames=headers)
+            writer.writeheader()
 
-        form_layout = QVBoxLayout()
-        for field in fields:
-            label = QLabel(f"{field} (X,Y)" if field in ["Dimension", "Center"] else field)
+# Save data to CSV
+def save_to_csv(file_path, data, headers):
+    with open(file_path, mode="w", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(data)
 
-            if field == "Riser":
-                input_field = QComboBox()
-                input_field.addItems(["Yes", "No"])
-            elif field == "Tools" and "Tools" in self.dropdown_data:
-                input_field = QComboBox()
-                input_field.addItems(self.dropdown_data["Tools"])
-            else:
-                input_field = QLineEdit()
-                if field in ["Diameter", "Number of Inserts"]:
-                    input_field.textChanged.connect(self.calculate_defaults)
+# Load data from CSV
+def load_from_csv(file_path, headers):
+    try:
+        with open(file_path, mode="r") as file:
+            reader = csv.DictReader(file)
+            return [dict(row) for row in reader]
+    except FileNotFoundError:
+        return []
 
-            form_layout.addWidget(label)
-            form_layout.addWidget(input_field)
-            self.inputs[field] = input_field
+# Check for unique name
+def is_unique_name(name, data, key):
+    return all(entry[key] != name for entry in data)
 
-        scroll_widget.setLayout(form_layout)
-        scroll_area.setWidget(scroll_widget)
-        scroll_area.setWidgetResizable(True)
+# Calculate spindle speed and feed rate
+def calculate_spindle_feed(diameter, inserts):
+    spindle_speed = round((120 * 1000) / (math.pi * diameter))  # RPM
+    feed_rate = round(spindle_speed * 0.2 * inserts)  # mm/min
+    return spindle_speed, feed_rate
 
-        button_layout = QHBoxLayout()
-        save_button = QPushButton("Save")
-        save_button.clicked.connect(self.validate_and_accept)
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(self.reject)
-        button_layout.addWidget(save_button)
-        button_layout.addWidget(cancel_button)
+# Add Tool
+def add_tool(tools):
+    print("\n--- Add Tool ---")
+    name = input("Enter tool name: ").strip()
+    if not is_unique_name(name, tools, "name"):
+        print("Error: Tool name must be unique!")
+        return
 
-        layout.addWidget(scroll_area)
-        layout.addLayout(button_layout)
-        self.setLayout(layout)
+    try:
+        diameter = float(input("Enter tool diameter (1-200 mm): "))
+        if not (1 <= diameter <= 200):
+            raise ValueError("Diameter out of range.")
 
-    def validate_and_accept(self):
-        for field, input_field in self.inputs.items():
-            if isinstance(input_field, QLineEdit) and field != "Spindle Speed" and field != "Feed Rate":
-                if field == "Name" and not input_field.text().isdigit():
-                    QMessageBox.critical(self, "Invalid Input", f"{field} must be a number.")
-                    return
-                elif not input_field.text():
-                    QMessageBox.critical(self, "Invalid Input", f"{field} cannot be empty.")
-                    return
-        self.accept()
+        inserts = int(input("Enter number of inserts (1-24): "))
+        if not (1 <= inserts <= 24):
+            raise ValueError("Number of inserts out of range.")
 
-    def get_data(self):
-        return {field: (self.inputs[field].currentText() if isinstance(self.inputs[field], QComboBox) else self.inputs[field].text()) for field in self.fields}
+        spindle_speed, feed_rate = calculate_spindle_feed(diameter, inserts)
+        print(f"Suggested Spindle Speed: {spindle_speed} RPM")
+        print(f"Suggested Feed Rate: {feed_rate} mm/min")
 
-    def calculate_defaults(self):
-        try:
-            diameter = float(self.inputs["Diameter"].text())
-            inserts = int(self.inputs["Number of Inserts"].text())
-            surface_speed = 150  # m/min
-            chip_thickness = 0.2  # mm
+        if input("Are you happy with these values? (yes/no): ").strip().lower() != "yes":
+            spindle_speed = int(input("Enter custom Spindle Speed (RPM): "))
+            feed_rate = int(input("Enter custom Feed Rate (mm/min): "))
 
-            spindle_speed = int((surface_speed * 1000) / (3.14159 * diameter))
-            feed_rate = int(spindle_speed * chip_thickness * inserts)
+        tool_number = int(input("Enter tool number (1-10): "))
+        if not (1 <= tool_number <= 10):
+            raise ValueError("Tool number out of range.")
 
-            self.inputs["Spindle Speed"].setText(str(spindle_speed))
-            self.inputs["Feed Rate"].setText(str(feed_rate))
-        except (ValueError, KeyError):
-            self.inputs["Spindle Speed"].setText("")
-            self.inputs["Feed Rate"].setText("")
+        length = float(input("Enter tool length (mm): "))
+        if length <= 0:
+            raise ValueError("Tool length must be positive.")
 
-class MainWindow(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("G-Code Generator")
-        self.setGeometry(100, 100, 1000, 700)
+        tools.append({
+            "name": name,
+            "diameter": diameter,
+            "inserts": inserts,
+            "spindle_speed": spindle_speed,
+            "feed_rate": feed_rate,
+            "tool_number": tool_number,
+            "length": length
+        })
+        print("Tool added successfully!")
 
-        self.data_folder = "data"
-        os.makedirs(self.data_folder, exist_ok=True)
+    except ValueError as e:
+        print(f"Error: {e}")
 
-        self.tabs = QTabWidget()
-        self.setCentralWidget(self.tabs)
+# Add Part
+def add_part(parts, tools, risers):
+    if not tools:
+        print("Error: Add tools before adding parts!")
+        return
 
-        self.parts_tab = self.create_table_tab("Parts", ["Name", "Dimension", "Tools", "Riser"], "parts.json")
-        self.tools_tab = self.create_table_tab("Tools", ["Tool Name", "Diameter", "Number of Inserts", "Spindle Speed", "Feed Rate"], "tools.json")
-        self.risers_tab = self.create_table_tab("Risers", ["Riser Name", "Center", "Height"], "risers.json")
-        self.output_tab = self.create_output_tab()
+    print("\n--- Add Part ---")
+    name = input("Enter part name (4-6 digit number): ").strip()
+    if not name.isdigit() or not (1000 <= int(name) <= 999999):
+        print("Error: Part name must be a 4-6 digit number!")
+        return
+    if not is_unique_name(name, parts, "name"):
+        print("Error: Part name must be unique!")
+        return
 
-        self.tabs.addTab(self.parts_tab, "Parts")
-        self.tabs.addTab(self.tools_tab, "Tools")
-        self.tabs.addTab(self.risers_tab, "Risers")
-        self.tabs.addTab(self.output_tab, "Output")
+    try:
+        dimension_x = float(input("Enter part dimension X (10-450 mm): "))
+        dimension_y = float(input("Enter part dimension Y (10-450 mm): "))
+        cut_depth = float(input("Enter total cut depth (1-10 mm): "))
+        if not (1 <= cut_depth <= 10):
+            raise ValueError("Cut depth out of range.")
+        if not (10 <= dimension_x <= 450) or not (10 <= dimension_y <= 450):
+            raise ValueError("Dimensions out of range.")
 
-    def create_table_tab(self, title, headers, filename):
-        tab = QWidget()
-        layout = QVBoxLayout()
+        print("\nAvailable Tools:")
+        for idx, tool in enumerate(tools, start=1):
+            print(f"{idx}. {tool['name']} (Diameter: {tool['diameter']} mm)")
+        tool_choice = int(input("Enter the number of the tool to use: "))
+        if not (1 <= tool_choice <= len(tools)):
+            raise ValueError("Invalid tool selection.")
 
-        table = QTableWidget()
-        table.setColumnCount(len(headers))
-        table.setHorizontalHeaderLabels(headers)
-
-        button_layout = QHBoxLayout()
-        add_button = QPushButton("Add")
-        add_button.clicked.connect(lambda: self.open_add_item_popup(headers, table, filename))
-        edit_button = QPushButton("Edit")
-        remove_button = QPushButton("Remove")
-        remove_button.clicked.connect(lambda: self.remove_selected_row(table, filename))
-
-        button_layout.addWidget(add_button)
-        button_layout.addWidget(edit_button)
-        button_layout.addWidget(remove_button)
-
-        layout.addWidget(table)
-        layout.addLayout(button_layout)
-        tab.setLayout(layout)
-
-        self.load_table_data(table, filename)
-
-        return tab
-
-    def open_add_item_popup(self, headers, table, filename):
-        dropdown_data = {}
-        if "Parts" in filename:
-            tools_filepath = os.path.join(self.data_folder, "tools.json")
-            if os.path.exists(tools_filepath):
-                with open(tools_filepath, "r") as file:
-                    tools_data = json.load(file)
-                    dropdown_data["Tools"] = [row[0] for row in tools_data]  # Assuming Tool Name is the first column
-
-            if not dropdown_data.get("Tools"):
-                QMessageBox.critical(self, "Error", "You must add at least one tool before adding a part.")
+        has_riser = input("Does this part have a riser? (yes/no): ").strip().lower()
+        riser = None
+        if has_riser == "yes":
+            if not risers:
+                print("Error: Add risers before assigning to parts!")
                 return
+            print("\nAvailable Risers:")
+            for idx, riser_item in enumerate(risers, start=1):
+                print(f"{idx}. {riser_item['name']} (Height: {riser_item['height']} mm)")
+            riser_choice = int(input("Enter the number of the riser to use: "))
+            if not (1 <= riser_choice <= len(risers)):
+                raise ValueError("Invalid riser selection.")
+            riser = risers[riser_choice - 1]["name"]
 
-        popup = AddItemPopup(headers, self, dropdown_data)
-        if popup.exec_() == QDialog.Accepted:
-            data = popup.get_data()
-            row_position = table.rowCount()
-            table.insertRow(row_position)
-            for col, header in enumerate(headers):
-                table.setItem(row_position, col, QTableWidgetItem(data[header]))
-            self.save_table_data(table, filename)
+        parts.append({
+            "name": name,
+            "dimension_x": dimension_x,
+            "dimension_y": dimension_y,
+            "tool": tools[tool_choice - 1]["name"],
+            "riser": riser,
+            "cut_depth": cut_depth
+        })
+        print("Part added successfully!")
+    except ValueError as e:
+        print(f"Error: {e}")
 
-    def remove_selected_row(self, table, filename):
-        current_row = table.currentRow()
-        if current_row != -1:
-            table.removeRow(current_row)
-            self.save_table_data(table, filename)
+# Add Riser
+def add_riser(risers):
+    print("\n--- Add Riser ---")
+    name = input("Enter riser name: ").strip()
+    if not is_unique_name(name, risers, "name"):
+        print("Error: Riser name must be unique!")
+        return
 
-    def load_table_data(self, table, filename):
-        filepath = os.path.join(self.data_folder, filename)
-        if os.path.exists(filepath):
-            with open(filepath, "r") as file:
-                data = json.load(file)
-                for row_data in data:
-                    row_position = table.rowCount()
-                    table.insertRow(row_position)
-                    for col, value in enumerate(row_data):
-                        table.setItem(row_position, col, QTableWidgetItem(value))
+    try:
+        center_x = float(input("Enter riser center X: "))
+        center_y = float(input("Enter riser center Y: "))
+        height = float(input("Enter riser height (mm): "))
+        if height <= 0:
+            raise ValueError("Riser height must be positive.")
 
-    def save_table_data(self, table, filename):
-        filepath = os.path.join(self.data_folder, filename)
-        data = []
-        for row in range(table.rowCount()):
-            row_data = []
-            for col in range(table.columnCount()):
-                item = table.item(row, col)
-                row_data.append(item.text() if item else "")
-            data.append(row_data)
-        with open(filepath, "w") as file:
-            json.dump(data, file)
+        risers.append({
+            "name": name,
+            "center_x": center_x,
+            "center_y": center_y,
+            "height": height
+        })
+        print("Riser added successfully!")
+    except ValueError as e:
+        print(f"Error: {e}")
 
-    def create_output_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout()
+# Generate G-Code
+def generate_gcode(parts, tools, risers):
+    print("\n--- Generate G-Code ---")
+    # Implement G-Code generation logic here (as in previous detailed example)
 
-        self.output_box = QTextEdit()
-        self.output_box.setReadOnly(True)
-        layout.addWidget(self.output_box)
+# Main Program
+def main():
+    initialize_csv(TOOLS_FILE, ["name", "diameter", "inserts", "spindle_speed", "feed_rate", "tool_number", "length"])
+    initialize_csv(PARTS_FILE, ["name", "dimension_x", "dimension_y", "tool", "riser", "cut_depth"])
+    initialize_csv(RISERS_FILE, ["name", "center_x", "center_y", "height"])
 
-        generate_button = QPushButton("Generate G-Code")
-        generate_button.clicked.connect(self.generate_gcode)
-        layout.addWidget(generate_button)
+    tools = load_from_csv(TOOLS_FILE, ["name", "diameter", "inserts", "spindle_speed", "feed_rate", "tool_number", "length"])
+    parts = load_from_csv(PARTS_FILE, ["name", "dimension_x", "dimension_y", "tool", "riser", "cut_depth"])
+    risers = load_from_csv(RISERS_FILE, ["name", "center_x", "center_y", "height"])
 
-        tab.setLayout(layout)
-        return tab
+    while True:
+        print("\n--- CNC G-Code Generator ---")
+        print("1. Add Tool")
+        print("2. Add Part")
+        print("3. Add Riser")
+        print("4. Generate G-Code")
+        print("5. Exit")
+        choice = input("Select an option: ").strip()
 
-    def generate_gcode(self):
-        # Example G-Code logic
-        commands = [
-            "N001 G90 G21 (Set to Absolute Positioning in mm)",
-            "N002 G17 (Select XY Plane)",
-            "N003 M06 T1 (Tool Change to Tool 1)",
-            "N004 G00 Z10 (Move to Safe Height)",
-            "N005 G01 X0 Y0 Z-5 F200 (Cut to Position)",
-            "N006 M30 (End of Program)",
-        ]
-        self.output_box.setText("\n".join(commands))
+        if choice == "1":
+            add_tool(tools)
+            save_to_csv(TOOLS_FILE, tools, ["name", "diameter", "inserts", "spindle_speed", "feed_rate", "tool_number", "length"])
+        elif choice == "2":
+            add_part(parts, tools, risers)
+            save_to_csv(PARTS_FILE, parts, ["name", "dimension_x", "dimension_y", "tool", "riser", "cut_depth"])
+        elif choice == "3":
+            add_riser(risers)
+            save_to_csv(RISERS_FILE, risers, ["name", "center_x", "center_y", "height"])
+        elif choice == "4":
+            generate_gcode(parts, tools, risers)
+        elif choice == "5":
+            print("Exiting program.")
+            break
+        else:
+            print("Invalid choice. Please try again.")
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
+    main()
