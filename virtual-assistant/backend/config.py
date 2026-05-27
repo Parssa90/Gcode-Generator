@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     teams_client_secret: str = ""     # Same as teams_bot_app_password (Graph API)
     teams_organizer_user_id: str = "" # Object ID of your M365 user (for Graph transcript API)
 
+    # Azure Cognitive Services — Speech (TTS for voice replies in Teams)
+    azure_speech_key: str = ""      # Azure portal → Speech resource → Keys and Endpoint
+    azure_speech_region: str = ""   # e.g. "eastus", "westeurope"
+
     # Laptop agent WebSocket
     laptop_agent_url: str = "ws://localhost:8765"
 

@@ -9,14 +9,29 @@ What it does:
 - On meeting end: fetches transcript via Graph API → generates notes with Claude
 - Posts structured notes back into the Teams meeting chat
 - Saves notes to ARIA database (SQLite)
+
+Voice feature:
+- Detects when anyone mentions "ARIA" or "@ARIA" in meeting chat
+- Generates a spoken audio reply via Azure TTS (en-US-AriaNeural)
+- Posts the WAV file as an audio attachment in the chat
+- Note: true bot-speaks-into-call audio requires the C# Real-Time Media Platform
+  SDK (Windows Azure VM only) — not feasible in our Python stack.
+  Chat-based TTS covers the practical use case just as well.
 """
 
 import logging
+import os
+import re
+import base64
+import tempfile
 from datetime import datetime
 from typing import Optional
 
 from botbuilder.core import ActivityHandler, TurnContext, MessageFactory
-from botbuilder.schema import Activity, ActivityTypes, ChannelAccount
+from botbuilder.schema import (
+    Activity, ActivityTypes, ChannelAccount,
+    Attachment, AttachmentData,
+)
 
 from core.teams_integration import (
     fetch_meeting_transcript,
@@ -24,8 +39,12 @@ from core.teams_integration import (
     post_meeting_notes,
 )
 from core.ai_engine import chat
+import core.tts as tts_module
 
 logger = logging.getLogger("aria.teams_bot")
+
+# Regex: catches "ARIA", "@ARIA", "Hey ARIA", "aria" (case-insensitive)
+_ARIA_MENTION = re.compile(r"\baria\b", re.IGNORECASE)
 
 
 class ARIATeamsBot(ActivityHandler):
@@ -57,16 +76,25 @@ class ARIATeamsBot(ActivityHandler):
         if not text:
             return
 
-        logger.info(f"Teams message from {turn_context.activity.from_property.name}: {text[:80]}")
+        sender = turn_context.activity.from_property.name or "someone"
+        logger.info(f"Teams message from {sender}: {text[:80]}")
 
-        # Let Claude handle it like a normal chat message
+        # Check whether ARIA is being addressed
+        aria_addressed = bool(_ARIA_MENTION.search(text))
+
+        # Let Claude generate a reply
         reply, _ = await chat(
             message=text,
             conversation_history=[],
             context={"source": "teams", "channel": "teams_chat"},
         )
 
+        # Always send text reply
         await turn_context.send_activity(MessageFactory.text(reply))
+
+        # If ARIA was called by name AND Azure TTS is set up → also send audio
+        if aria_addressed and tts_module.is_configured():
+            await _send_tts_reply(turn_context, reply)
 
     # ── Meeting lifecycle ──────────────────────────────────────────────────────
 
@@ -117,6 +145,45 @@ class ARIATeamsBot(ActivityHandler):
 
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
+
+async def _send_tts_reply(turn_context: TurnContext, text: str) -> None:
+    """
+    Generate a WAV file via Azure TTS and post it as an audio attachment
+    in the Teams chat.  Teams renders it as an inline audio player.
+
+    Teams attachment flow for audio:
+      1. Call TTS → get WAV bytes
+      2. Base64-encode the bytes
+      3. Attach as contentType="audio/wav" with the base64 data URI
+         (for small WAVs < 4 MB — sufficient for typical replies)
+    """
+    try:
+        wav_bytes = await tts_module.text_to_speech_bytes(text)
+        if not wav_bytes:
+            logger.warning("TTS returned no audio — skipping voice reply")
+            return
+
+        # Keep audio short in Teams context; truncate if > 4 MB
+        if len(wav_bytes) > 4 * 1024 * 1024:
+            logger.warning("TTS audio > 4 MB — skipping voice attachment")
+            return
+
+        b64 = base64.b64encode(wav_bytes).decode("utf-8")
+        data_uri = f"data:audio/wav;base64,{b64}"
+
+        attachment = Attachment(
+            content_type="audio/wav",
+            content_url=data_uri,
+            name="aria-reply.wav",
+        )
+        audio_activity = MessageFactory.text("")
+        audio_activity.attachments = [attachment]
+        await turn_context.send_activity(audio_activity)
+        logger.info("TTS audio attachment sent to Teams chat")
+
+    except Exception as exc:
+        logger.error(f"Failed to send TTS audio: {exc}")
+
 
 async def _process_meeting(
     turn_context: TurnContext, meeting_id: str, title: str

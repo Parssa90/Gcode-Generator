@@ -24,3 +24,7 @@ markdown==3.5.2
 botbuilder-core==4.16.1
 botbuilder-integration-aiohttp==4.16.1
 botframework-connector==4.16.1
+# Azure Speech (TTS voice replies in Teams)
+azure-cognitiveservices-speech==1.37.0
+# Word document generation
+python-docx==1.1.0
