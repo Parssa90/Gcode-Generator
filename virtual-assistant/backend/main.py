@@ -17,6 +17,7 @@ from config import settings
 from database.db import init_db, get_db, ConversationLog, TaskDB, DocumentDB, MeetingDB, get_id
 from core.ai_engine import chat, generate_document, generate_monthly_report, analyze_emails
 from core.websocket_manager import client_manager, laptop_bridge
+from core.email_manager import send_email as outlook_send, fetch_inbox, fetch_email_body, is_configured as email_configured
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("aria")
@@ -211,78 +212,105 @@ async def create_meeting(req: MeetingCreate, db: Session = Depends(get_db)):
     }
 
 
-# ─── Email ────────────────────────────────────────────────────────────────────
+# ─── Email (Outlook / Office 365) ────────────────────────────────────────────
 
-MOCK_EMAILS = [
-    {
-        "id": "email-001",
-        "from": "contracts@company.com",
-        "subject": "URGENT: Tender Deadline Tomorrow — Project Alpha",
-        "preview": "This is a reminder that the submission deadline for Project Alpha tender is tomorrow at 5 PM. Please ensure all documentation is ready.",
-        "receivedAt": "2026-05-25T09:00:00Z",
-        "priority": "critical",
-        "category": "tender",
-        "read": False,
-    },
-    {
-        "id": "email-002",
-        "from": "procurement@client.org",
-        "subject": "Request for Quotation — CNC Equipment Supply",
-        "preview": "We are requesting quotations for the supply of CNC milling equipment. Please see attached specifications.",
-        "receivedAt": "2026-05-24T14:30:00Z",
-        "priority": "high",
-        "category": "rfq",
-        "read": False,
-    },
-    {
-        "id": "email-003",
-        "from": "admin@partner.com",
-        "subject": "Meeting Confirmation — Q2 Review",
-        "preview": "This confirms your meeting scheduled for Monday, June 2nd at 10:00 AM. Agenda attached.",
-        "receivedAt": "2026-05-24T11:00:00Z",
-        "priority": "normal",
-        "category": "meeting",
-        "read": True,
-    },
-    {
-        "id": "email-004",
-        "from": "finance@office.com",
-        "subject": "Monthly Invoice — May 2026",
-        "preview": "Please find attached the invoice for services rendered in May 2026.",
-        "receivedAt": "2026-05-23T08:00:00Z",
-        "priority": "normal",
-        "category": "general",
-        "read": True,
-    },
-    {
-        "id": "email-005",
-        "from": "legal@firm.com",
-        "subject": "Contract Amendment — Action Required",
-        "preview": "Please review and sign the attached contract amendment by end of week.",
-        "receivedAt": "2026-05-22T16:00:00Z",
-        "priority": "high",
-        "category": "urgent",
-        "read": False,
-    },
-]
+class EmailSendRequest(BaseModel):
+    to: list[str]
+    subject: str
+    body: str
+    cc: list[str] = []
+    html: bool = False
+
+
+@app.get("/api/email/status")
+async def email_status():
+    """Returns whether Outlook credentials are configured."""
+    return {
+        "configured": email_configured(),
+        "account": settings.outlook_email if email_configured() else None,
+    }
 
 
 @app.get("/api/email/list")
-async def list_emails(folder: str = "inbox", limit: int = 20):
-    return MOCK_EMAILS[:limit]
+async def list_emails(folder: str = "INBOX", limit: int = 20):
+    """Fetch real emails from Outlook inbox via IMAP."""
+    emails = await fetch_inbox(folder=folder, limit=limit)
+    if not emails and not email_configured():
+        # Return demo data so the UI is not empty before credentials are set
+        return _demo_emails()
+    return emails
+
+
+@app.get("/api/email/{uid}/body")
+async def get_email_body(uid: str, folder: str = "INBOX"):
+    """Fetch the full body of one email (also marks it as read)."""
+    body = await fetch_email_body(uid, folder)
+    if body is None:
+        raise HTTPException(404, "Email not found or Outlook not configured")
+    return {"uid": uid, "body": body}
 
 
 @app.get("/api/email/analyze")
 async def analyze_email_inbox():
-    analysis = await analyze_emails(MOCK_EMAILS)
-    critical = [e for e in MOCK_EMAILS if e["priority"] in ("critical", "high")]
+    """Fetch inbox and run Claude AI analysis on it."""
+    emails = await fetch_inbox(limit=30)
+    if not emails:
+        emails = _demo_emails()
+    analysis = await analyze_emails(emails)
+    critical = [e for e in emails if e["priority"] in ("critical", "high")]
     return {"critical": critical, "summary": analysis.get("summary", "Email analysis complete.")}
 
 
 @app.post("/api/email/send")
-async def send_email(data: dict):
-    logger.info(f"Sending email to {data.get('to')} with subject {data.get('subject')}")
+async def send_email_endpoint(req: EmailSendRequest):
+    """Send an email via Outlook SMTP."""
+    result = await outlook_send(
+        to=req.to,
+        subject=req.subject,
+        body=req.body,
+        cc=req.cc if req.cc else None,
+        html=req.html,
+    )
+    if not result["sent"]:
+        raise HTTPException(status_code=502, detail=result["error"])
+    logger.info(f"Email sent via Outlook to {req.to}: {req.subject}")
     return {"sent": True, "messageId": get_id()}
+
+
+def _demo_emails() -> list[dict]:
+    """Placeholder emails shown before Outlook credentials are configured."""
+    return [
+        {
+            "id": "demo-001",
+            "from": "contracts@company.com",
+            "subject": "URGENT: Tender Deadline Tomorrow — Project Alpha",
+            "preview": "Submission deadline for Project Alpha tender is tomorrow at 5 PM.",
+            "receivedAt": "2026-05-25T09:00:00Z",
+            "priority": "critical",
+            "category": "tender",
+            "read": False,
+        },
+        {
+            "id": "demo-002",
+            "from": "procurement@client.org",
+            "subject": "Request for Quotation — CNC Equipment Supply",
+            "preview": "We are requesting quotations for the supply of CNC milling equipment.",
+            "receivedAt": "2026-05-24T14:30:00Z",
+            "priority": "high",
+            "category": "rfq",
+            "read": False,
+        },
+        {
+            "id": "demo-003",
+            "from": "legal@firm.com",
+            "subject": "Contract Amendment — Action Required",
+            "preview": "Please review and sign the attached contract amendment by end of week.",
+            "receivedAt": "2026-05-22T16:00:00Z",
+            "priority": "high",
+            "category": "urgent",
+            "read": False,
+        },
+    ]
 
 
 # ─── Tasks ────────────────────────────────────────────────────────────────────

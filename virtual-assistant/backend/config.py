@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite:///./aria.db"
 
-    # Email (Google OAuth)
+    # Outlook / Office 365 email
+    outlook_email: str = ""        # full address e.g. you@company.com or you@outlook.com
+    outlook_password: str = ""     # account password — or App Password if MFA is enabled
+
+    # Google OAuth (optional — not required when using Outlook)
     google_client_id: str = ""
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
