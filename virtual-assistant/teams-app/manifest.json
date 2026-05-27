@@ -1,0 +1,42 @@
+{
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.16",
+  "version": "1.0.0",
+  "id": "$TEAMS_BOT_APP_ID",
+  "packageName": "com.aria.assistant",
+  "developer": {
+    "name": "ARIA",
+    "websiteUrl": "https://github.com/Parssa90/ARIA",
+    "privacyUrl": "https://github.com/Parssa90/ARIA",
+    "termsOfUseUrl": "https://github.com/Parssa90/ARIA"
+  },
+  "name": {
+    "short": "ARIA",
+    "full": "ARIA — AI Remote Intelligence Assistant"
+  },
+  "description": {
+    "short": "AI meeting assistant — takes notes, tracks actions",
+    "full": "ARIA joins your Teams meetings, transcribes conversations, extracts action items and decisions, and posts structured notes in the chat. Powered by Claude AI."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#3b82f6",
+  "bots": [
+    {
+      "botId": "$TEAMS_BOT_APP_ID",
+      "scopes": ["personal", "team", "groupchat"],
+      "supportsFiles": false,
+      "isNotificationOnly": false,
+      "supportsCalling": false,
+      "supportsVideo": false
+    }
+  ],
+  "permissions": ["identity", "messageTeamMembers"],
+  "validDomains": ["*.ngrok-free.app", "*.ngrok.io", "yourdomain.com"],
+  "webApplicationInfo": {
+    "id": "$TEAMS_BOT_APP_ID",
+    "resource": "api://yourdomain.com/$TEAMS_BOT_APP_ID"
+  }
+}
