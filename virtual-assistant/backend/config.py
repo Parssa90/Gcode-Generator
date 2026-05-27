@@ -24,6 +24,14 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:8000/api/auth/google/callback"
 
+    # Microsoft Teams Bot
+    teams_bot_app_id: str = ""        # Azure Bot → Microsoft App ID
+    teams_bot_app_password: str = ""  # Azure Bot → Client Secret
+    teams_tenant_id: str = ""         # Azure AD tenant (or "common" for multi-tenant)
+    teams_client_id: str = ""         # Same as teams_bot_app_id (Graph API)
+    teams_client_secret: str = ""     # Same as teams_bot_app_password (Graph API)
+    teams_organizer_user_id: str = "" # Object ID of your M365 user (for Graph transcript API)
+
     # Laptop agent WebSocket
     laptop_agent_url: str = "ws://localhost:8765"
 

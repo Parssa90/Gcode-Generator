@@ -18,6 +18,7 @@ from database.db import init_db, get_db, ConversationLog, TaskDB, DocumentDB, Me
 from core.ai_engine import chat, generate_document, generate_monthly_report, analyze_emails
 from core.websocket_manager import client_manager, laptop_bridge
 from core.email_manager import send_email as outlook_send, fetch_inbox, fetch_email_body, is_configured as email_configured
+from routers.teams import router as teams_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("aria")
@@ -49,6 +50,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(teams_router)
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
